@@ -1,0 +1,8 @@
+2. Use Fiddler’s Breakpoint Feature
+
+If you can’t disable auto-login, you can set breakpoints in Fiddler to pause the request and give you time to modify it.
+
+Here’s how to use Fiddler’s Breakpoint feature:
+	1.	Open Fiddler and make sure it’s capturing traffic.
+	2.	Go to Rules → Customize Rules in the Fiddler menu. This will open the CustomRules.js file.
+	3.	Find the OnBeforeRequest function in the file. Add the following code to break the request before it’s sent to PlayFab:
