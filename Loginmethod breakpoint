@@ -1,0 +1,4 @@
+if (oSession.url.indexOf("playfabapi.com") !== -1 && oSession.url.indexOf("LoginWithSteam") !== -1) {
+    // Set a breakpoint on this request
+    oSession["request"]["headers"]["X-Fiddler-Breakpoint"] = "1";
+}
