@@ -1,0 +1,3 @@
+handlers.ReturnCurrentVersionNew = function(args){
+    return {"ResultCode":0,"BannedUsers":"0","MOTD":"<color=white></color>","SynchTime":"-LOADING-","Version":"live1122", "Message":"live1122"}
+}
