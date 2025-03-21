@@ -1,0 +1,212 @@
+using System.Runtime.CompilerServices;
+using Unity.Burst;
+using Unity.Collections;
+using Unity.Jobs;
+using Unity.Mathematics;
+
+namespace GorillaLocomotion.Gameplay
+{
+    [BurstCompile(FloatPrecision.Low, FloatMode.Fast)]
+    public struct VectorizedSolveRopeJob : IJob
+    {
+        [ReadOnly]
+        public int applyConstraintIterations;
+
+        [ReadOnly]
+        public int finalPassIterations;
+
+        [ReadOnly]
+        public float deltaTime;
+
+        [ReadOnly]
+        public float lastDeltaTime;
+
+        [ReadOnly]
+        public int ropeCount;
+
+        public VectorizedBurstRopeData data;
+
+        [ReadOnly]
+        public float gravity;
+
+        [ReadOnly]
+        public float nodeDistance;
+
+        public void Execute()
+        {
+            Simulate();
+            for (int i = 0; i < applyConstraintIterations; i++)
+            {
+                ApplyConstraint();
+            }
+            for (int j = 0; j < finalPassIterations; j++)
+            {
+                FinalPass();
+            }
+        }
+
+        private void Simulate()
+        {
+            for (int i = 0; i < data.posX.Length; i++)
+            {
+                float4 velocityX = (data.posX[i] - data.lastPosX[i]) / lastDeltaTime;
+                float4 velocityY = (data.posY[i] - data.lastPosY[i]) / lastDeltaTime;
+                float4 velocityZ = (data.posZ[i] - data.lastPosZ[i]) / lastDeltaTime;
+                data.lastPosX[i] = data.posX[i];
+                data.lastPosY[i] = data.posY[i];
+                data.lastPosZ[i] = data.posZ[i];
+                float4 newPositionX = data.lastPosX[i] + velocityX * deltaTime * 0.996f;
+                float4 newPositionY = data.lastPosY[i] + velocityY * deltaTime;
+                float4 newPositionZ = data.lastPosZ[i] + velocityZ * deltaTime * 0.996f;
+                newPositionY += gravity * deltaTime;
+                data.posX[i] = newPositionX * data.validNodes[i];
+                data.posY[i] = newPositionY * data.validNodes[i];
+                data.posZ[i] = newPositionZ * data.validNodes[i];
+            }
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private static void Dot4(ref float4 ax, ref float4 ay, ref float4 az, ref float4 bx, ref float4 by, ref float4 bz, ref float4 output)
+        {
+            output = ax * bx + ay * by + az * bz;
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private static void Length4(ref float4 xVals, ref float4 yVals, ref float4 zVals, ref float4 output)
+        {
+            float4 output2 = float4.zero;
+            Dot4(ref xVals, ref yVals, ref zVals, ref xVals, ref yVals, ref zVals, ref output2);
+            output = math.sqrt(output2);
+        }
+
+        private void ConstrainRoots()
+        {
+            int num = 0;
+            for (int i = 0; i < data.posX.Length; i += 32)
+            {
+                for (int j = 0; j < 4; j++)
+                {
+                    float4 valueX = data.posX[i];
+                    float4 valueY = data.posY[i];
+                    float4 valueZ = data.posZ[i];
+                    valueX[j] = data.ropeRoots[num].x;
+                    valueY[j] = data.ropeRoots[num].y;
+                    valueZ[j] = data.ropeRoots[num].z;
+                    data.posX[i] = valueX;
+                    data.posY[i] = valueY;
+                    data.posZ[i] = valueZ;
+                    num++;
+                }
+            }
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private void ApplyConstraint()
+        {
+            ConstrainRoots();
+            float4 floatNegOne = math.int4(-1, -1, -1, -1);
+            for (int i = 0; i < ropeCount; i += 4)
+            {
+                for (int j = 0; j < 31; j++)
+                {
+                    int nodeIndex = i / 4 * 32 + j;
+                    float4 validNodes1 = data.validNodes[nodeIndex];
+                    float4 validNodes2 = data.validNodes[nodeIndex + 1];
+                    if (!(math.lengthsq(validNodes2) < 0.1f))
+                    {
+                        float4 constraintValue = float4.zero;
+                        float4 diffX = data.posX[nodeIndex] - data.posX[nodeIndex + 1];
+                        float4 diffY = data.posY[nodeIndex] - data.posY[nodeIndex + 1];
+                        float4 diffZ = data.posZ[nodeIndex] - data.posZ[nodeIndex + 1];
+                        Length4(ref diffX, ref diffY, ref diffZ, ref constraintValue);
+                        float4 diffFromDistance = math.abs(constraintValue - nodeDistance);
+                        float4 signOfDifference = math.sign(constraintValue - nodeDistance);
+                        constraintValue += validNodes1 - floatNegOne;
+                        float4 ratioX = diffX / constraintValue;
+                        float4 ratioY = diffY / constraintValue;
+                        float4 ratioZ = diffZ / constraintValue;
+                        float4 correction = signOfDifference * ratioX * diffFromDistance;
+                        float4 correctionY = signOfDifference * ratioY * diffFromDistance;
+                        float4 correctionZ = signOfDifference * ratioZ * diffFromDistance;
+                        float4 massRatio1 = data.nodeMass[nodeIndex] / (data.nodeMass[nodeIndex] + data.nodeMass[nodeIndex + 1]);
+                        float4 massRatio2 = data.nodeMass[nodeIndex + 1] / (data.nodeMass[nodeIndex] + data.nodeMass[nodeIndex + 1]);
+                        data.posX[nodeIndex] -= correction * validNodes2 * massRatio1;
+                        data.posY[nodeIndex] -= correctionY * validNodes2 * massRatio1;
+                        data.posZ[nodeIndex] -= correctionZ * validNodes2 * massRatio1;
+                        data.posX[nodeIndex + 1] += correction * validNodes2 * massRatio2;
+                        data.posY[nodeIndex + 1] += correctionY * validNodes2 * massRatio2;
+                        data.posZ[nodeIndex + 1] += correctionZ * validNodes2 * massRatio2;
+                    }
+                }
+            }
+        }
+
+        private void ConstraintPassTwo()
+        {
+            float4 floatNegOne = math.int4(-1, -1, -1, -1);
+            for (int i = 0; i < ropeCount; i += 4)
+            {
+                for (int j = 0; j < 30; j++)
+                {
+                    int nodeIndex = i / 4 * 32 + j;
+                    _ = (float4)data.validNodes[nodeIndex];
+                    float4 validNodes2 = data.validNodes[nodeIndex + 2];
+                    float4 constraintValue = float4.zero;
+                    float4 diffX = data.posX[nodeIndex] - data.posX[nodeIndex + 2];
+                    float4 diffY = data.posY[nodeIndex] - data.posY[nodeIndex + 2];
+                    float4 diffZ = data.posZ[nodeIndex] - data.posZ[nodeIndex + 2];
+                    Length4(ref diffX, ref diffY, ref diffZ, ref constraintValue);
+                    float4 diffFromDistance = math.abs(constraintValue - nodeDistance * 2f);
+                    float4 signOfDifference = math.sign(constraintValue - nodeDistance * 2f);
+                    constraintValue += data.validNodes[nodeIndex] - floatNegOne;
+                    float4 ratioX = diffX / constraintValue;
+                    float4 ratioY = diffY / constraintValue;
+                    float4 ratioZ = diffZ / constraintValue;
+                    float4 correction = signOfDifference * ratioX * 0.5f;
+                    float4 correctionY = signOfDifference * ratioY * 0.5f;
+                    float4 correctionZ = signOfDifference * ratioZ * 0.5f;
+                    float4 massRatio1 = data.nodeMass[nodeIndex] / (data.nodeMass[nodeIndex] + data.nodeMass[nodeIndex + 1]);
+                    float4 massRatio2 = data.nodeMass[nodeIndex + 1] / (data.nodeMass[nodeIndex] + data.nodeMass[nodeIndex + 1]);
+                    data.posX[nodeIndex] -= correction * validNodes2 * massRatio1;
+                    data.posY[nodeIndex] -= correctionY * validNodes2 * massRatio1;
+                    data.posZ[nodeIndex] -= correctionZ * validNodes2 * massRatio1;
+                    data.posX[nodeIndex + 1] += correction * validNodes2 * massRatio2;
+                    data.posY[nodeIndex + 1] += correctionY * validNodes2 * massRatio2;
+                    data.posZ[nodeIndex + 1] += correctionZ * validNodes2 * massRatio2;
+                }
+            }
+        }
+
+        private void FinalPass()
+        {
+            ConstrainRoots();
+            float4 floatNegOne = math.int4(-1, -1, -1, -1);
+            for (int i = 0; i < ropeCount; i += 4)
+            {
+                for (int j = 0; j < 31; j++)
+                {
+                    int nodeIndex = i / 4 * 32 + j;
+                    _ = (float4)data.validNodes[nodeIndex];
+                    float4 validNodes2 = data.validNodes[nodeIndex + 1];
+                    float4 constraintValue = float4.zero;
+                    float4 diffX = data.posX[nodeIndex] - data.posX[nodeIndex + 1];
+                    float4 diffY = data.posY[nodeIndex] - data.posY[nodeIndex + 1];
+                    float4 diffZ = data.posZ[nodeIndex] - data.posZ[nodeIndex + 1];
+                    Length4(ref diffX, ref diffY, ref diffZ, ref constraintValue);
+                    float4 diffFromDistance = math.abs(constraintValue - nodeDistance);
+                    float4 signOfDifference = math.sign(constraintValue - nodeDistance);
+                    constraintValue += data.validNodes[nodeIndex] - floatNegOne;
+                    float4 ratioX = diffX / constraintValue;
+                    float4 ratioY = diffY / constraintValue;
+                    float4 ratioZ = diffZ / constraintValue;
+                    float4 correction = signOfDifference * ratioX * diffFromDistance;
+                    float4 correctionY = signOfDifference * ratioY * diffFromDistance;
+                    float4 correctionZ = signOfDifference * ratioZ * diffFromDistance;
+                    data.posX[nodeIndex + 1] += correction * validNodes2;
+                    data.posY[nodeIndex + 1] += correctionY * validNodes2;
+                    data.posZ[nodeIndex + 1] += correctionZ * validNodes2;
+                }
+            }
+        }
+    }
+}
