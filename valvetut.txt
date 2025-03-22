@@ -1,0 +1,65 @@
+Below is the tutorial in plain text format. You can copy the text below and save it as a .txt file (for example, SteamVR_Sliders_Tutorial.txt):
+
+⸻
+
+SteamVR Advanced Video Settings & Sliders Tutorial
+
+This tutorial explains how to unlock Valve Index-style per-application video settings sliders inside the VR dashboard without spoofing your headset.
+
+Step 1: Enable Advanced VR Settings in SteamVR
+	1.	Open SteamVR on your desktop.
+	2.	Click the ☰ Menu (top left) and select Settings.
+	3.	Scroll down and enable “Advanced Settings” (if it isn’t already).
+	4.	Under the Video section, enable “Per-Application Video Settings.”
+
+Some settings will now appear in VR, but to unlock all the sliders, continue with the steps below.
+
+Step 2: Force All Video Settings to Show in VR
+	1.	Open the file:
+C:\Program Files (x86)\Steam\config\steamvr.vrsettings
+in a text editor such as Notepad or Notepad++.
+	2.	Find the “steamvr” section and add or modify the following settings:
+{
+“steamvr”: {
+“showAdvancedSettings”: true,
+“enableDashboard”: true,
+“showPerfGraph”: true,
+“allowCustomResolution”: true,
+“supersampleManualOverride”: true,
+“maxRecommendedResolution”: 8192
+}
+}
+	3.	Save the file and restart SteamVR.
+	4.	Open the SteamVR Dashboard (press the System button while in VR).
+	5.	Navigate to Settings > Video and check that all sliders are unlocked.
+
+Step 3: Unlock More Per-App Video Sliders (Including Index-Specific Ones)
+	1.	In the same steamvr.vrsettings file, locate the “perAppSettings” section.
+	2.	Add or modify the section with the following settings:
+“perAppSettings”: {
+“default”: {
+“allowMotionSmoothing”: true,
+“allowInterleavedReprojection”: false,
+“motionPrediction”: 0.02,
+“motionSmoothing”: true,
+“renderTargetMultiplier”: 2.0,
+“preferredRefreshRate”: 144
+}
+}
+Note:
+	•	This forces motion smoothing, reprojection settings, and refresh rate sliders to appear.
+	•	If your headset doesn’t support 144Hz, the refresh rate slider may not function as expected.
+
+Step 4: Final Steps
+	1.	Save all changes made to the steamvr.vrsettings file.
+	2.	Restart SteamVR.
+	3.	Put on your headset, open the SteamVR Dashboard, and navigate to Settings > Video > Per-Application Settings.
+	4.	You should now see the extra sliders inside VR!
+
+This tutorial lets you access advanced settings without forcing your VR system to think you’re using a Valve Index.
+
+Enjoy tweaking your VR experience!
+
+⸻
+
+You can now save this content as a text file. Let me know if you need any further adjustments!
